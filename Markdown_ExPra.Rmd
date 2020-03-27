@@ -1,0 +1,79 @@
+---
+title: "Preregistration_Markdown"
+author: "Christophe"
+date: "19 3 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ggplot2)
+library(readr)
+library(dplyr)
+library(ggfortify)
+library(GGally)
+library(tidyverse)
+library(tidyr)
+library(psych)
+```
+
+```{r}
+daten <- read.csv('datensatz.csv')
+```
+
+
+```{r}
+str(datensatz)
+glimpse(datensatz) #overview 
+
+ggplot(datensatz, aes(x = reactiontime)) +  #distribution
+  geom_density() +
+  theme_bw
+
+ggplot(datensatz, aes(x = familiarity)) +
+  geom_density() +
+  theme_bw
+
+ggplot(datensatz, aes(x = attractiveness)) +
+  geom_density() +
+  theme_bw
+
+
+ggplot(datensatz, aes(x = categories, y = reactiontime)) + 
+  geom_boxplot() +
+  theme_bw
+```
+
+
+statistical check for distribution
+```{r}
+shapiro.test(datensatz$reactiontime)
+shapiro.test(datensatz$familiarity)
+shapiro.test(datensatz$attractiveness)
+```
+
+Hypothesis one
+```{r}
+m1 <- aov(reactiontime ~ category_1 + category_2 + category_3 , datensatz)
+autoplot(m1) #assumtions
+summary(m1) #results
+TukeyHSD(m1, conf.level = 0.95)
+
+#non parametric
+wilcox.test(x, y, datensatz)
+friedman.test(y, group, datensatz)
+```
+
+Hypothesis two
+```{r}
+
+```
+
+Hypothesis three
+```{r}
+
+```
+
