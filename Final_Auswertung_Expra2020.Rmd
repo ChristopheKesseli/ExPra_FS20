@@ -1,0 +1,1150 @@
+---
+title: "ExPra_Gruppe 01"
+author: "Andrina & Christophe - Euer R-Team des Vertrauens"
+date: "4/10/2020"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=T}
+knitr::opts_chunk$set(echo = TRUE)
+
+rm(list = ls())
+
+library(readxl) 
+library(car)
+library(tidyverse) 
+library(rstatix)
+library(ggpubr)
+library(rcompanion)
+library(reshape2)
+library(GGally)
+library(xtable)
+
+
+sI <- sessionInfo()
+print(sI, RNG =TRUE, locale = FALSE)
+
+```
+
+## basic Figure configurations for ggplot figures
+
+```{r ggplot1}
+apatheme=theme_bw()+
+  theme(plot.title = element_text(size = rel((4)), face = "bold"),
+        axis.title.x = element_text(size = rel(2.5)),
+        axis.title.y = element_text(size = rel(2.5)),
+        axis.text = element_text(size = rel(2)),
+        axis.text.x = element_text(),
+        panel.grid.major=element_blank(),
+        panel.grid.minor=element_blank(),
+        panel.border=element_blank(),
+        axis.line=element_line(),
+        legend.key.size = unit(3,"line"),
+        legend.title = element_text(size = rel(2)),
+        legend.text = element_text(size = rel(2)))
+```
+
+## Open data
+
+set working directory
+
+```{r}
+setwd("/Users/andri/Desktop/ExPra/WichtigeDokumenteExPra/") 
+
+#setwd("C:/Users/chris/Desktop/Der Ordner/UZH/Psychologie/Aufbaustufe/ExPra/Bericht/Methodenteil & Auswertung")
+
+data_Rating <-  read_excel("Data_ExPra2019_data.xlsx", sheet = "Rating") 
+data_RT <-  read_excel("Data_ExPra2019_data.xlsx", sheet = "RT")
+
+```
+## create subsamples
+
+### Rating
+
+```{r, warning=FALSE}
+data4long_Rating <- select(data_Rating, Subject,sex,  AvatarAttrR:HumanFamR)
+#data_long_Rating <- gather(data4long_Rating, Categories, Ratings, c("AvatarAttrR","BorderAttrR","HumanAttrR","AvatarFamR","BorderFamR","HumanFamR"), factor_key=TRUE)
+data_long_Rating <- reshape(data4long_Rating,
+                            varying = c("AvatarAttrR","BorderAttrR","HumanAttrR",
+                                        "AvatarFamR","BorderFamR","HumanFamR"),
+                            times = c("AvatarAttrR","BorderAttrR","HumanAttrR",
+                                      "AvatarFamR","BorderFamR","HumanFamR"),
+                            v.name = c("Ratings"),
+                            timevar = ("Categories"),
+                            new.row.names = 1:1000,
+                            direction = "long")
+
+data_long_Rating$Task <- ifelse(grepl("Attr", data_long_Rating$Categories), "Attr",
+                                ifelse(grepl("Fam", data_long_Rating$Categories), "Fam", "Error"))
+
+Attr_Rating <- subset(data_long_Rating, data_long_Rating$Task == "Attr")
+Fam_Rating <- subset(data_long_Rating, data_long_Rating$Task == "Fam")
+
+```
+
+### RT
+
+```{r, error=FALSE, warning=FALSE}
+data4long_RT <- select(data_RT, Subject, sex, AvatarAttrRT:HumanFamRT)
+#data_long_RT <- gather(data4long_RT, Categories, RT, c("AvatarAttrRT","BorderAttrRT","HumanAttrRT","AvatarFamRT","BorderFamRT","HumanFamRT"), factor_key=TRUE)
+
+data_long_RT <- reshape(data4long_RT,
+                        varying = c("AvatarAttrRT","BorderAttrRT","HumanAttrRT",
+                                    "AvatarFamRT","BorderFamRT","HumanFamRT"),
+                        times = c("AvatarAttrRT","BorderAttrRT","HumanAttrRT",
+                                  "AvatarFamRT","BorderFamRT","HumanFamRT"),
+                        v.name = c("RT"),
+                        timevar = ("Categories"),
+                        new.row.names = 1:1000,
+                        direction = "long")
+
+data_long_RT$Task <- ifelse(grepl("Attr", data_long_RT$Categories), "Attr",
+                            ifelse(grepl("Fam", data_long_RT$Categories), "Fam", "Error"))
+
+data_long_RT <- data_long_RT %>%
+  mutate(RT = as.numeric(RT*1000))
+
+Attr_RT <- subset(data_long_RT, data_long_RT$Task == "Attr")
+Fam_RT <- subset(data_long_RT, data_long_RT$Task == "Fam")
+
+```
+
+## check normal distibution
+
+### shapiro_Rating
+Int: Die meisten Datensätze sind nicht NV (wenn < 0.05)
+```{r}
+shapiro_Rating <- lapply(data_Rating[,2:23],shapiro.test)
+shapiro_Rating_Table <- sapply(shapiro_Rating, `[`, c("statistic","p.value"))
+
+
+shapiro_Rating_Table
+```
+
+### shapiro_RT
+Int: Gar keine nv Datensätze
+```{r}
+shapiro_RT <- lapply(data_RT[,17:23],shapiro.test)
+shapiro_RT_Table <- sapply(shapiro_RT, `[`, c("statistic","p.value"))
+
+shapiro_RT_Table
+
+```
+
+
+
+## EDA
+
+## Boxplot
+
+### Rating
+*Deskriptiv:* Rating am höchsten in der Kat. Human; dann kommt Border und zuletzt Avatar; in beiden Task das gleiche Muster
+```{r}
+rating_attr_plot <- ggplot(Attr_Rating, aes(x = Categories, y = Ratings, colour = Categories)) +
+  geom_boxplot() +
+  ylab('Attraktivität') +
+  geom_point() +
+  theme_bw() 
+
+rating_fam_plot <- ggplot(Fam_Rating, aes(x = Categories, y = Ratings, colour = Categories)) +
+  geom_boxplot() +
+  geom_point() +
+  ylab('Familiarität') +
+  theme_bw() 
+
+ggarrange(rating_attr_plot+ rremove("x.text"), rating_fam_plot + rremove("x.text"), 
+          labels = c("A", "B"),
+          ncol = 2)
+
+```
+
+### RT
+*Deskriptiv:* Reaktionszeit in der Kategorie Border am höchsten dann kommt Human und zuletzt die Avavat-Kategorie; in beiden Task das selbe Muster
+```{r}
+
+rt_attr_plot <- ggplot(Attr_RT, aes(x = Categories, y = RT, colour = Categories)) +
+  geom_boxplot() +
+  geom_point() +
+  ylab('Attraktivität') +
+  theme_bw() 
+
+rt_fam_plot <- ggplot(Fam_RT, aes(x = Categories, y = RT, colour = Categories)) +
+  geom_boxplot() +
+  geom_point() +
+  ylab('Familiarität') +
+  theme_bw() 
+
+ggarrange(rt_attr_plot + rremove("x.text"), rt_fam_plot + rremove("x.text"), 
+          labels = c("AttrRT", "FamRT"),
+          ncol = 2)
+```
+
+
+*Hypothese 1a*
+Wir erwarten die höchsten Ratings für die Kategorie Human (M9-M11) im Vergleich zu Avatar-Kategorie (M1-M3). Die tiefsten Ratings werden in der Border-Kategorie erwartet.(M6)
+
+*Hypothese 1b*
+Die Reaktionszeit wird in der Avatar Kat. (M1-M3) kürzer sein, als in der Kat. Human (M9-M11). Die längste Reaktionzeit wird in der Border Kat. (M6) erwartet
+
+Int: deskriptiv kann man herauslesen, dass der erste Abschnitt zutrifft. Die Ratings für Humman sind in beiden Angaben höhere, als die für die Kat. Avatar. Der Zweite Abschnitt trifft nicht zu. Die Border Kat. hat nicht die tiefsten Werte, sondern die Kat. Avatar.
+
+### Rating
+```{r}
+ggplot(data_long_Rating, aes(x = Task, y = Ratings, colour = Categories)) +
+  geom_boxplot()+
+  xlab('Task') +
+  ylab('Rating') +
+  ggtitle('Overview Rating and Task')+
+  theme_minimal()
+
+```
+
+### RT
+Int: deskriptiv ist die RZ in der Border Kat ein wenig höher. Die tiefste RZ weist die Kat. Avatar auf. 
+Würde somit mit Hypothese 1b übereinstimmen > interferenz?
+
+```{r}
+ggplot(data_long_RT, aes(x = Task, y = RT, colour = Categories)) +
+  geom_boxplot()+
+  ylab('Reaction time') +
+  ggtitle('Overview reaction time and task')+
+  theme_minimal()
+
+```
+
+# Summary
+
+### Rating
+```{r}
+Attr_Rating%>%
+  group_by(Categories)%>%
+  get_summary_stats(Ratings, type = "common")
+Fam_Rating%>%
+  group_by(Categories)%>%
+  get_summary_stats(Ratings, type = "common")
+
+```
+
+### RT
+```{r}
+Attr_RT%>%
+  group_by(Categories)%>%
+  get_summary_stats(RT, type = "common")
+Fam_RT%>%
+  group_by(Categories)%>%
+  get_summary_stats(RT, type = "common")
+
+```
+
+
+# Statistics
+
+## FriedmanTest
+
+### Ratings
+
+```{r}
+friedmanAttr_Rating <- Attr_Rating %>% friedman_test(Ratings ~ Categories|id)
+friedmanFam_Rating <- Fam_Rating %>% friedman_test(Ratings ~ Categories|id)
+
+```
+
+### RT
+
+```{r}
+friedmanAttr_RT <- Attr_RT %>% friedman_test(RT ~ Categories|id)
+friedmanFam_RT <- Fam_RT %>% friedman_test(RT ~ Categories|id)
+```
+
+## Results of freidman test
+
+All results are p < 0.05, df = 2   
+```{r}
+
+friedmanAttr_Rating
+friedmanFam_Rating
+friedmanAttr_RT
+friedmanFam_RT
+
+```
+
+# effect size for friedman test:
+Kendall's W (small: < 0.10; medium: 0.10 < 0.30; large: <= 0.30)
+
+### Rating
+```{r}
+kendallAttr_Rating <- Attr_Rating %>% 
+  friedman_effsize(Ratings ~ Categories|id)
+kendallFam_Rating <- Fam_Rating %>% 
+  friedman_effsize(Ratings ~ Categories|id)
+
+```
+
+### RT
+```{r}
+kendallAttr_RT <- Attr_RT %>% 
+  friedman_effsize(RT ~ Categories|id)
+kendallFam_RT <- Fam_RT %>% 
+  friedman_effsize(RT ~ Categories|id)
+
+```
+
+Ratings effectsize > 0.710 => lagre effectsize
+
+```{r}
+kendallAttr_Rating
+kendallFam_Rating
+
+```
+
+RT effectsize > 0.110 => medium effectsize
+
+```{r}
+kendallAttr_RT
+kendallFam_RT
+
+```
+# Fragestellung 1:Gibt es Unterschiede in den Ratings und der Reaktionszeit (RT) abhängig davon, ob die VP ein menschliches oder ein computersimuliertes Gesicht sieht?
+
+
+*Hypothese1a:*
+Die Reaktionszeit wird in der Kategorie Avatar (M1-M3) kürzer sein als in der Kategorie Mensch (M9-M11). Die längste Reaktionszeit erwarten wir in der Grenzkategorie (M6).
+
+
+*Hypothese 1b:*
+Wir erwarten höhere Attraktivität und Vertrautheit in der Kategorie Mensch (M9-M11) im Vergleich zur Kategorie Avatar (M1-M3). Ausserdem erwarten wir die niedrigsten Werte in der Grenzkategorie (M6).
+
+
+
+# post hoc Wilcoxon
+
+posthoc Wilcoxon signed-rank test (p-values can be adjusted (corrected for multiple comparisons) 
+using e.g. fdr (false discovery rate) correction;
+Bonferroni-Korrektur is too conservative for our data as the are not independent
+
+### Rating
+
+```{r}
+pwcAttr_Rating <- Attr_Rating %>% 
+  wilcox_test(Ratings ~ Categories, paired = TRUE, p.adjust.method = "fdr") 
+pwcFam_Rating <- Fam_Rating %>% 
+  wilcox_test(Ratings ~ Categories, paired = TRUE, p.adjust.method = "fdr")
+
+```
+
+### RT
+
+```{r}
+pwcAttr_RT <- Attr_RT %>% 
+  wilcox_test(RT ~ Categories, paired = TRUE, p.adjust.method = "fdr")
+pwcFam_RT <- Fam_RT %>% 
+  wilcox_test(RT ~ Categories, paired = TRUE, p.adjust.method = "fdr")
+
+```
+
+Values below p are the uncorrected values, p.adj is the fdr-corr.
+The results show that all mean values differ significantly from each other in the Rating, not always in the RT categories
+
+```{r}
+pwcAttr_Rating
+pwcFam_Rating
+
+pwcAttr_RT
+pwcFam_RT
+
+```
+
+# effect size for the Wilcoxon test
+
+### Rating
+
+```{r}
+wilcoxonR(x = Attr_Rating$Ratings, g = Attr_Rating$Categories)
+wilcoxonR(x = Fam_Rating$Ratings, g = Fam_Rating$Categories)
+
+```
+### RT
+
+```{r}
+wilcoxonR(x = Attr_RT$RT, g = Attr_RT$Categories)
+wilcoxonR(x = Fam_RT$RT, g = Fam_RT$Categories)
+
+```
+
+
+# plot data with ggboxplot (z.B. with p-values)
+
+### Rating
+```{r}
+labels_friedman <- c(AvatarAttrR = 'Avatar', BorderAttrR = 'Grenzkategorie', 
+                     HumanAttrR = 'Mensch')
+
+pwcAttr_Rating <- pwcAttr_Rating %>% add_xy_position(x = "Categories")
+pwcAttr_Rating_boxplot <- ggboxplot(Attr_Rating, x = "Categories", y = "Ratings", add = "point", fill = "Categories") +
+  stat_pvalue_manual(pwcAttr_Rating, hide.ns = TRUE) +
+  labs(
+    subtitle = get_test_label(friedmanAttr_Rating,  detailed = TRUE),
+    caption = get_pwc_label(pwcAttr_Rating)
+  )+
+  xlab("Kategorien: Attraktivität")+
+  ylab("Rating")+
+  theme(legend.position = "none")+
+  scale_x_discrete(labels= labels_friedman)
+
+
+pwcAttr_Rating_boxplot
+
+
+
+ggsave('/Users/andri/Desktop/ExPra/WichtigeDokumenteExPra/Attraktivitätrating.png', width = 9, height = 6, unit = 'in', dpi = 600) 
+
+
+labels_friedman <- c(AvatarFamR = 'Avatar', BorderFamR = 'Grenzkategorie', 
+                     HumanFamR = 'Mensch')
+
+
+
+pwcFam_Rating <- pwcFam_Rating %>% add_xy_position(x = "Categories")
+pwcFam_Rating_boxplot <- ggboxplot(Fam_Rating, x = "Categories", y = "Ratings", add = "point", fill = "Categories") +
+  stat_pvalue_manual(pwcFam_Rating, hide.ns = TRUE) +
+  labs(
+    subtitle = get_test_label(friedmanFam_Rating,  detailed = TRUE),
+    caption = get_pwc_label(pwcFam_Rating)
+  )+
+  xlab("Kategorien: Familiarität")+
+  ylab("Rating")+
+  theme(legend.position = "none")+
+  scale_x_discrete(labels= labels_friedman)
+
+
+pwcFam_Rating_boxplot
+
+
+ggsave('/Users/andri/Desktop/ExPra/WichtigeDokumenteExPra/Familiaritätsrating.png', width = 9, height = 6, unit = 'in', dpi = 600) 
+```
+
+
+### RT
+
+```{r}
+labels_friedman <- c(AvatarAttrRT = 'Avatar', BorderAttrRT = 'Grenzkategorie',  HumanAttrRT = 'Mensch')
+
+
+pwcAttr_RT <- pwcAttr_RT %>% add_xy_position(x = "Categories")
+pwcAttr_RT_boxplot <- ggboxplot(Attr_RT, x = "Categories", y = "RT", add = "point", fill = "Categories") +
+  stat_pvalue_manual(pwcAttr_RT, hide.ns = TRUE) +
+  labs(
+    subtitle = get_test_label(friedmanAttr_RT,  detailed = TRUE),
+    caption = get_pwc_label(pwcAttr_RT)
+  )+
+  xlab("Kategorien: Attraktivität")+
+  ylab("Reaktionszeiten")+
+  theme(legend.position = "none")+
+  scale_x_discrete(labels= labels_friedman)
+
+
+pwcAttr_RT_boxplot
+
+
+labels_friedman <- c(AvatarFamRT = 'Avatar', BorderFamRT = 'Grenzkategorie',  HumanFamRT = 'Mensch')
+
+pwcFam_RT <- pwcFam_RT %>% add_xy_position(x = "Categories")
+pwcFam_RT_boxplot <- ggboxplot(Fam_RT, x = "Categories", y = "RT", add = "point", fill = "Categories") +
+  stat_pvalue_manual(pwcFam_RT, hide.ns = TRUE) +
+  labs(
+    subtitle = get_test_label(friedmanFam_RT,  detailed = TRUE),
+    caption = get_pwc_label(pwcFam_RT)
+  )+
+  xlab("Kategorien: Familiarität")+
+  ylab("Reaktionszeiten")+
+  theme(legend.position = "none")+
+  scale_x_discrete(labels= labels_friedman)
+
+
+pwcFam_RT_boxplot
+
+```
+
+# Geschlechtsunterschied #
+
+# Fragestellung 2: Gibt es einen Geschlechtsunterschied in den Ratings und in den Reaktionszeiten?
+
+*Hypothese 2a: *
+Frauen zeigen schnellere Reaktionszeiten in der Grenzkategorie und in der Kategorie Mensch. Für die Kategorie Avatar erwarten wir keine Geschlechtsunterschiede.
+
+*Hypothese 2b: *
+Es gibt keine geschlechtsspezifischen Unterschiede bei der Beantwortung der Skalen Bezüglich Vertrautheit und Attraktivität
+
+### Ratings
+
+```{r}
+dd <- data_Rating %>%
+  select(Subject, sex, ARESBASI, ARESBASII, ARESBAS, AvatarAttrR:HumanFamR) %>%
+  arrange(Subject)
+dd$sex <- as.factor(dd$sex)
+```
+
+### Reaction time
+```{r}
+dd_r <- data_RT %>%
+  select(Subject, sex,  ARESBAS, ARESBASI, ARESBASII, AvatarAttrRT:HumanFamRT) %>%
+  arrange(Subject)
+dd_r$sex <- as.factor(dd_r$sex)
+```
+
+###statistical overview
+```{r}
+data_Rating %>%
+  group_by(sex) %>%
+  summarise(mean_age = mean(age), 
+            sd_age = sd(age))
+```
+
+
+```{r}
+# 1 = Mann, 0 = Frau
+dd <- dd %>%
+  arrange(sex)
+
+dd_men_rating <- dd %>%
+  filter(sex == 1)
+dd_woman_rating <- dd %>%
+  filter(sex == 0)
+
+rating_merge <- merge(dd_men_rating, dd_woman_rating, all = TRUE)
+rating_merge$Geschlecht <- ifelse(rating_merge$sex == 1, 'Mann', 'Frau')
+
+Attr_Rating <- Attr_Rating %>%
+  mutate(Geschlecht = ifelse(Attr_Rating$sex == 1, 'Mann', 'Frau'))
+Fam_Rating <- Fam_Rating %>%
+  mutate(Geschlecht = ifelse(Attr_Rating$sex == 1, 'Mann', 'Frau'))
+
+```
+
+*Hypothese 2a Attraktivität*
+```{r}
+ugender_Attr_avatar <- wilcox.test(dd_men_rating$AvatarAttrR, dd_woman_rating$AvatarAttrR)
+ugender_Attr_border <- wilcox.test(dd_men_rating$BorderAttrR , dd_woman_rating$BorderAttrR)
+ugender_Attr_human <- wilcox.test(dd_men_rating$HumanAttrR, dd_woman_rating$HumanAttrR)
+
+gender_Attr_list <- list(Attr_Avatar = ugender_Attr_avatar, Attr_Border = ugender_Attr_border, Attr_Human = ugender_Attr_human)
+print(gender_Attr_results <- sapply(gender_Attr_list, `[`, c("statistic","p.value")))
+
+
+```
+
+```{r}
+dd %>%
+  group_by(sex)%>%
+  summarise(mean_attr_human = mean(HumanAttrR), sd_attr_human = sd(HumanAttrR), 
+          mean_attr_border = mean(BorderAttrR), sd_attr_border = sd(BorderAttrR), 
+          mean_attr_avatar = mean(AvatarAttrR), sd_attr_avatar = sd(AvatarAttrR))
+```
+
+*Hypothese 2a Familiarität*
+```{r}
+ugender_Fam_avatar <- wilcox.test(dd_men_rating$AvatarFamR, dd_woman_rating$AvatarFamR)
+ugender_Fam_border <- wilcox.test(dd_men_rating$BorderFamR , dd_woman_rating$BorderFamR)
+ugender_Fam_human <- wilcox.test(dd_men_rating$HumanFamR, dd_woman_rating$HumanFamR)
+
+gender_Fam_list <- list(Fam_Avatar = ugender_Fam_avatar, Fam_Border = ugender_Fam_border, Fam_Human = ugender_Fam_human)
+print(gender_Attr_results <- sapply(gender_Fam_list, `[`, c("statistic","p.value")))
+```
+
+```{r}
+dd %>%
+  group_by(sex)%>%
+  summarise(mean_fam_human = mean(HumanFamR), sd_fam_human = sd(HumanFamR), 
+          mean_fam_border = mean(BorderFamR), sd_fam_border = sd(BorderFamR), 
+          mean_fam_avatar = mean(AvatarFamR), sd_fam_avatar = sd(AvatarFamR))
+```
+
+```{r}
+plot_attr_rating <- ggplot(Attr_Rating, aes(x = Categories, y = Ratings, fill = Geschlecht)) +
+  geom_boxplot() +
+  ylab('Rating Attraktivität') +
+  xlab('Kategorien') +
+  theme_minimal() +
+  theme(legend.position="none")
+  
+plot_fam_rating <- ggplot(Fam_Rating, aes(x = Categories, y = Ratings, fill = Geschlecht)) +
+  geom_boxplot() +
+  ylab('Rating Familiarität') +
+  xlab('Kategorien') +
+  theme_minimal()
+
+ggarrange(plot_attr_rating,plot_fam_rating)
+#ggsave('/Users/chris/Desktop/Der Ordner/UZH/Psychologie/Aufbaustufe/ExPra/Bericht/Methodenteil & Auswertung/Plots/Rating_Attr_Fam_Plot.png', width = 9, height = 6, unit = 'in', dpi = 600)
+```
+
+*Hypothese 2b*
+```{r}
+dd_gender_rt <- merge(Fam_RT, Attr_RT, all = TRUE) %>%
+  arrange(desc(Categories))
+
+dd_men_rt <- dd_r %>%
+  filter(sex == 1)
+dd_woman_rt <- dd_r %>%
+  filter(sex == 0)
+
+rt_merge <- merge(dd_men_rt, dd_woman_rt, all = TRUE)
+rt_merge$Geschlecht <- ifelse(rt_merge$sex == 1, 'Mann', 'Frau')
+```
+
+**Border Categorie**
+Maenner langsamer, Frauen schneller  
+Attr_Human -> H0 beibehalten
+Fam_Human - > H0 verwefen
+```{r}
+#wilcox.test(dd_woman_rt$BorderAttrRT, dd_men_rt$BorderAttrRT)  
+#wilcox.test(dd_woman_rt$BorderFamRT, dd_men_rt$BorderFamRT)
+
+genderRT_attr_border <- wilcox.test(dd_men_rt$BorderAttrRT, dd_woman_rt$BorderAttrRT, alternative = 'greater')
+genderRT_fam_border <-wilcox.test(dd_men_rt$BorderFamRT, dd_woman_rt$BorderFamRT, alternative = 'greater') 
+
+genderRT_border_list <- list(Attr_Border = genderRT_attr_border, Fam_Border = genderRT_fam_border)
+print(gender_RT_results <- sapply(genderRT_border_list, `[`, c("statistic","p.value")))
+
+cliffDelta(x = dd_men_rt$BorderAttrRT, y = dd_woman_rt$BorderAttrRT,conf.level=.95)
+cliffDelta(x = dd_men_rt$BorderFamRT, y = dd_woman_rt$BorderFamRT,conf.level=.95)
+
+```
+
+**Human**
+Attr_Human -> H0 verwefen
+Fam_Human - > H0 beibehalten
+```{r}
+#wilcox.test(dd_woman_rt$HumanAttrRT, dd_men_rt$HumanAttrRT)
+#wilcox.test(dd_woman_rt$HumanFamRT, dd_men_rt$HumanFamRT)
+
+genderRT_attr_human <- wilcox.test(dd_men_rt$HumanAttrRT, dd_woman_rt$HumanAttrRT, alternative = 'greater')
+genderRT_fam_human <- wilcox.test(dd_men_rt$HumanFamRT, dd_woman_rt$HumanFamRT, alternative = 'greater')
+
+genderRT_human_list <- list(Attr_Human = genderRT_attr_human, Fam_Human = genderRT_fam_human)
+print(gender_RT_results <- sapply(genderRT_human_list, `[`, c("statistic","p.value")))
+
+cliffDelta(x = dd_men_rt$HumanAttrRT, y = dd_woman_rt$HumanAttrRT,conf.level=.95)
+cliffDelta(x = dd_men_rt$HumanFamRT, y = dd_woman_rt$HumanFamRT,conf.level=.95)
+```
+
+**Avatar**
+Attr_Border -> H0 beibehalten
+Fam_Border -> H0 verwerfen
+```{r}
+#wilcox.test(dd_woman_rt$AvatarAttrRT, dd_men_rt$AvatarAttrRT)
+#wilcox.test(dd_woman_rt$AvatarFamRT, dd_men_rt$AvatarFamRT)
+
+genderRT_attr_avatar <- wilcox.test(dd_men_rt$AvatarAttrRT, dd_woman_rt$AvatarAttrRT, alternative = 'greater')
+genderRT_fam_avatar <- wilcox.test(dd_men_rt$AvatarFamRT, dd_woman_rt$AvatarFamRT, alternative = 'greater')
+
+genderRT_avatar_list <- list(Attr_Border = genderRT_attr_border, Fam_Border = genderRT_fam_border)
+print(gender_RT_results <- sapply(genderRT_avatar_list, `[`, c("statistic","p.value")))
+
+cliffDelta(x = dd_men_rt$AvatarAttrRT, y = dd_woman_rt$AvatarAttrRT,conf.level=.95)
+cliffDelta(x = dd_men_rt$AvatarFamRT, y = dd_woman_rt$AvatarFamRT,conf.level=.95)
+```
+
+ Border; Plot
+ Deskriptiv: Männer längere RZ als Frauen für Border
+```{r}
+gender_attr_border <- ggplot(rt_merge, aes(x = factor(Geschlecht), y = BorderAttrRT, fill = factor(Geschlecht))) +
+  geom_boxplot() + 
+  xlab('Geschlecht') +
+  ylab('Reaktionszeit Grenzkategorie') +
+  scale_fill_discrete(guide=FALSE)+
+  theme_minimal() 
+
+gender_fam_border <- ggplot(rt_merge, aes(x = factor(Geschlecht), y = BorderFamRT, fill = factor(Geschlecht))) +
+  geom_boxplot() + 
+  xlab('Geschlecht') +
+  labs(fill = 'Geschlecht') +
+  ylab('') +
+  theme_minimal()
+
+ggarrange(gender_attr_border+ rremove("x.text") ,gender_fam_border + rremove("x.text"), 
+          labels = c("Attraktivität", "Familiarität"),
+          ncol = 2)
+
+#ggsave('/Users/chris/Desktop/Der Ordner/UZH/Psychologie/Aufbaustufe/ExPra/Bericht/Methodenteil & Auswertung/Plots/RT_Border_Attr_Fam_Plot.png', width = 9, height = 6, unit = 'in', dpi = 600)
+
+```
+
+Human; plot
+Deskriptiv: Männer längere RZ als Frauen für Human
+```{r}
+gender_attr_human <- ggplot(rt_merge, aes(x = factor(Geschlecht), y = HumanAttrRT, fill = factor(Geschlecht))) +
+  geom_boxplot() + 
+  xlab('Geschlecht') +
+  ylab('Reaktionszeit Kategorie Mensch') +
+  scale_fill_discrete(guide=FALSE)+
+  theme_minimal()
+
+gender_fam_human <- ggplot(rt_merge, aes(x = factor(Geschlecht), y = HumanFamRT, fill = factor(Geschlecht)))+
+  geom_boxplot() + 
+  xlab('Geschlecht') +
+  labs(fill = 'Geschlecht') +
+  ylab('') +
+  theme_minimal()
+
+ggarrange(gender_attr_human + rremove("x.text"),gender_fam_human + rremove("x.text"), 
+          labels = c("Attraktivität", "Familiarität"),
+          ncol = 2)
+#ggsave('/Users/chris/Desktop/Der Ordner/UZH/Psychologie/Aufbaustufe/ExPra/Bericht/Methodenteil & Auswertung/Plots/RT_Human_Attr_Fam_Plot.png', width = 9, height = 6, unit = 'in', dpi = 600)
+```
+
+Avatar 
+Deskriptiv: Männer längere RZ als Frauen für Avatar
+```{r}
+gender_attr_avatar <- ggplot(rt_merge, aes(x = factor(Geschlecht), y = AvatarAttrRT, fill = factor(Geschlecht))) +
+  geom_boxplot() + 
+  xlab('Geschlecht') +
+  ylab('Reaktionszeit Kategorie Avatar') +
+  scale_fill_discrete(guide=FALSE)+
+  theme_minimal()
+
+gender_fam_avatar <- ggplot(rt_merge, aes(x = factor(Geschlecht), y = AvatarFamRT, fill = factor(Geschlecht))) +
+  geom_boxplot() + 
+  xlab('Geschlecht') +
+  labs(fill = 'Geschlecht') +
+  ylab('') +
+  theme_minimal()
+
+ggarrange(gender_attr_avatar + rremove("x.text"),gender_fam_avatar + rremove("x.text"), 
+          labels = c("Attraktivität", "Familiarität"),
+          ncol = 2)
+#ggsave('/Users/chris/Desktop/Der Ordner/UZH/Psychologie/Aufbaustufe/ExPra/Bericht/Methodenteil & Auswertung/Plots/RT_Avatar_Attr_Fam_Plot.png', width = 9, height = 6, unit = 'in', dpi = 600)
+```
+
+
+```{r}
+data_long_RT <- data_long_RT %>%
+  mutate(Geschlecht = as.factor(ifelse(data_long_RT$sex == 1, 'Mann', 'Frau')))
+labels <- c(AvatarAttrRT = 'Attraktivität Avatar', BorderAttrRT = 'Attraktivität Grenze', 
+            HumanAttrRT = 'Attraktivität Mensch', AvatarFamRT = 'Familiarität Avatar',
+            BorderFamRT = 'Familiarität Grenze', HumanFamRT = 'Familiarität Mensch')
+```
+
+
+```{r}
+ggplot(data_long_RT, aes(x = Geschlecht, y = RT, fill = Geschlecht)) +
+  geom_boxplot()+
+  theme_minimal() +
+  ylab('Reaktionszeit') +
+  facet_wrap(~Categories, labeller=labeller(Categories = labels))
+
+ggsave('/Users/chris/Desktop/Der Ordner/UZH/Psychologie/Aufbaustufe/ExPra/Bericht/Methodenteil & Auswertung/Plots/RT_Attr_Fam_Plot.png', width = 9, height = 6, unit = 'in', dpi = 600)
+```
+
+
+# Persönlichkeitseigenschaften: BAS 
+
+## Fragestellung 3: Gibt es Unterschiede in den Ratings für Fam. ; Attr. sowie in den RT abhängig vom BAS (BASI und BAS II)
+*Hypothese 3a:*
+Je höher der BAS I Wert, desto kürzer ist die Antwortzeit bei der Beantwortung der Skala für Vertrautheit und Attraktivität, unabhängig davon ob Mensch-, Avatar- oder Grenzkategorie.
+
+*Hypothese 3b:*
+Wir erwarten, dass höhere BASII Werte mit höheren Bewertungen auf den Skalen Familiarität und Attraktivität in den Kat. Human (M9-M11) und Avatar (M1-M3) einhergehen. In der Kat Border (M6) werden die Bewertungen für Vertrautheit und Attraktivität bei Menschen mit hohen BAS II Ausprägungen weniger negativ ausfallen im Vergleich zu Menschen mit niedrigen BAS II Werten 
+
+
+
+
+### Ratings
+
+```{r}
+dd <- data_Rating %>%
+  select(Subject, sex, ARESBASI, ARESBASII, ARESBAS, AvatarAttrR:HumanFamR) %>%
+  arrange(Subject)
+dd$sex <- as.factor(dd$sex)
+```
+
+### Reaction time
+```{r}
+dd_r <- data_RT %>%
+  select(Subject, sex,  ARESBAS, ARESBASI, ARESBASII, AvatarAttrRT:HumanFamRT) %>%
+  arrange(Subject)
+dd_r$sex <- as.factor(dd_r$sex)
+```
+
+## check for normal distribution
+NV: BASII, BorderAttr, HumanAttr, HumanFam
+
+nicht NV: BASI, ARESBAS, AvatarAttr, AvatarAttr, BorderFam
+
+```{r}
+nv <- lapply(dd[,3:9],shapiro.test)
+print(nv_table <- sapply(nv, `[`, c("statistic","p.value")))
+```
+
+*Hypothese 3a:*
+Wir erwarten, dass höhere BASII Werte mit höheren Bewertungen auf den Skalen Familiarität und Attraktivität in den Kat. Human (M9-M11) und Avatar (M1-M3) einhergehen. In der Kat Border (M6) werden die Bewertungen für Vertrautheit und Attraktivität bei Menschen mit hohen BAS II Ausprägungen weniger negativ ausfallen im Vergleich zu Menschen mit niedrigen BAS II Werten 
+
+## BASII
+
+```{r}
+BASII_plots <- function(b){
+  p <- ggplot(dd, aes(x = ARESBASII, y = b , colour = sex))+ 
+    geom_point() +
+    geom_smooth(method = 'loess') +
+    labs(colour = "sex") +
+    apatheme
+  return(p)
+}
+
+```
+
+### Rating 
+Int: deskriptiv sieht man, dass kaum höhere BASII Werte mit höheren Ratings einhergehen.
+```{r}
+
+BASII_plots(dd$BorderFamR)
+BASII_plots(dd$HumanFamR)
+BASII_plots(dd$AvatarFamR)
+
+BASII_plots(dd$AvatarAttrR)
+BASII_plots(dd$BorderAttrR)
+BASII_plots(dd$HumanAttrR)
+```
+
+
+
+## Extremgruppenvergleich BAS
+
+```{r}
+summary(dd$ARESBASII)
+summary(dd$ARESBASI)
+
+q1_BASII <- quantile(dd$ARESBASII, probs = 0.25)
+q3_BASII<- quantile(dd$ARESBASII, probs = 0.75)
+
+```
+
+# parametrische Tests
+
+
+### BASII Extremgruppen
+```{r}
+BASII_hoch <- dd %>%
+  select(ARESBASII, AvatarAttrR:HumanFamR) %>%
+  filter(ARESBASII > q3_BASII) %>%
+  mutate(BASII_high = 'Hoch') #cut off > IQR
+
+BASII_tief <- dd %>%
+  select(ARESBASII, AvatarAttrR:HumanFamR) %>%
+  filter(ARESBASII < q1_BASII) %>%
+  mutate(BASII_high = 'Tief')
+
+BASII <- merge(BASII_hoch, BASII_tief, all = TRUE)
+BASII$BASII_value <- ifelse(BASII$BASII_high == TRUE, 'BASII hoch', 'BASII tief')
+
+```
+
+```{r}
+summary(BASII_hoch$ARESBASII)
+summary(BASII_tief$ARESBASII)
+sd(BASII_hoch$ARESBASII)
+sd(BASII_tief$ARESBASII)
+```
+
+
+
+## BASII vs. Avatar, Mensch, Border (Fam; Attr)
+
+Mann-Whitney U Test (unpaired) to compare the two groups 
+
+```{r}
+u_attr_avatar <-  wilcox.test(BASII_hoch$AvatarAttrR, BASII_tief$AvatarAttrR, exact = FALSE,  alternative = 'greater') 
+u_fam_avatar <-   wilcox.test(BASII_hoch$AvatarFamR, BASII_tief$AvatarFamR,exact = FALSE, alternative = 'greater')
+
+
+u_attr_human <-  wilcox.test(BASII_hoch$HumanAttrR, BASII_tief$HumanAttrR, exact = FALSE, alternative = 'greater') 
+u_fam_human <-   wilcox.test(BASII_hoch$HumanFamR, BASII_tief$HumanFamR, exact = FALSE, alternative = 'greater')
+
+
+u_attr_border <-  wilcox.test(BASII_hoch$BorderAttrR, BASII_tief$BorderAttrR, exact = FALSE, alternative = 'greater') 
+u_fam_border <-   wilcox.test(BASII_hoch$BorderFamR, BASII_tief$BorderFamR, exact = FALSE, alternative = 'greater')
+
+```
+
+Results
+Int: H0 bei allen Paaren beibehalten
+```{r}
+
+BASII_list <- list(Attr_Avatar = u_attr_avatar, Fam_Avatar = u_fam_avatar, Attr_Human = u_attr_human, Fam_Human = u_fam_human, Attr_Border = u_attr_border, Fam_Border = u_fam_border)
+
+print(BASII_u_results <- sapply(BASII_list, `[`, c("statistic","p.value")))
+```
+
+
+### Attr plot
+```{r}
+basII_attr_avatar <- ggplot(BASII, aes(x = ARESBASII, y = AvatarAttrR, fill = BASII_high )) +
+  geom_boxplot() +
+  ylab('Attraktivität Avatar') +
+  labs(fill = 'BASII') +
+  scale_fill_discrete(guide=FALSE)+
+  theme_minimal()
+
+basII_attr_human <- ggplot(BASII, aes(x = ARESBASII, y = HumanAttrR, fill = BASII_high )) +
+  geom_boxplot() +
+  ylab('Attraktivität Mensch')+
+  labs(fill = 'BASII') +
+  theme_minimal()
+
+basII_attr_border <- ggplot(BASII, aes(x = ARESBASII, y = BorderAttrR, fill = BASII_high )) +
+  geom_boxplot() +
+  ylab('Attraktivität Grenzkategorie')+
+  labs(fill = 'BASII') +
+  theme_minimal()
+
+ggarrange(basII_attr_avatar + rremove("x.text"), basII_attr_human + rremove("x.text"), 
+          basII_attr_border + rremove("x.text"),
+          labels = c('Avatar', 'Mensch', 'Grenze'),
+          ncol = 2, nrow = 2)
+
+#ggsave('/Users/chris/Desktop/Der Ordner/UZH/Psychologie/Aufbaustufe/ExPra/Bericht/Methodenteil & Auswertung/Plots/BASII_Attr.png', width = 9, height = 6, unit = 'in', dpi = 600)
+```
+
+### Fam plot
+```{r}
+basII_fam_avatar <- ggplot(BASII, aes(x = ARESBASII, y = AvatarFamR, fill = BASII_high )) +
+  geom_boxplot() +
+  ylab('Familiarität Avatar') +
+  scale_fill_discrete(guide=FALSE)+
+   theme_minimal()
+
+basII_fam_human <- ggplot(BASII, aes(x = ARESBASII, y = HumanFamR, fill = BASII_high )) +
+  geom_boxplot() +
+  ylab('Familiarität Mensch')+
+   labs(fill = 'BASII') +
+  theme_minimal()
+
+basII_fam_border <- ggplot(BASII, aes(x = ARESBASII, y = BorderFamR, fill = BASII_high)) +
+  geom_boxplot() +
+  ylab('Familiarität Grenzkategorie') +
+  labs(fill = 'BASII') +
+  theme_minimal()
+
+ggarrange(basII_fam_avatar + rremove("x.text"), basII_fam_human + rremove("x.text"), 
+          basII_fam_border + rremove("x.text"),
+          labels = c('Avatar', 'Mensch', 'Grenze'),
+          ncol = 2, nrow = 2)
+
+#ggsave('/Users/chris/Desktop/Der Ordner/UZH/Psychologie/Aufbaustufe/ExPra/Bericht/Methodenteil & Auswertung/Plots/BASII_Fam.png', width = 9, height = 6, unit = 'in', dpi = 600)
+```
+
+# effect size for the Mann-Whitney U test
+
+```{r}
+cliffDelta(x = BASII_hoch$AvatarAttrR, y = BASII_tief$AvatarAttrR)
+
+```
+
+Plot Vorschlag für Bericht
+```{r ggplot2}
+p1 <- ggplot(BASII, aes(x = factor(BASII_high), y = AvatarAttrR, fill = BASII_high))+
+  geom_jitter(aes(color = BASII_value), position=position_jitterdodge(dodge.width=0.8), size = 1.8, alpha = 1, show.legend = FALSE)+ 
+  geom_boxplot(outlier.shape = NA, alpha = 0.7)+ 
+  scale_color_manual(values = c("lightgreen","lightblue"))+
+  scale_fill_manual(values = c("lightgreen","lightblue"))+
+  ylab('Rating attrac. Avatar') +
+  xlab('BASII Value') +
+  guides(fill=FALSE) + 
+  apatheme
+p1
+
+```
+
+Korrelation BASII & Rating
+
+BASII und Attr.
+```{r}
+cor.test(dd$ARESBASII, dd$AvatarAttrR, method = 'spearman')
+cor.test(dd$ARESBASII, dd$BorderAttrR, method = 'spearman')
+cor.test(dd$ARESBASII, dd$HumanAttrR, method = 'spearman')
+```
+
+BASII und Fam. 
+```{r}
+cor.test(dd$ARESBASII, dd$AvatarAttrR, method = 'spearman')
+cor.test(dd$ARESBASII, dd$BorderAttrR, method = 'spearman')
+cor.test(dd$ARESBASII, dd$HumanAttrR, method = 'spearman')
+```
+
+
+*Hypothese 3b:*
+Je höher der BAS I Wert, desto kürzer ist die Antwortzeit bei der Beantwortung der Skala für Vertrautheit und Attraktivität, unabhängig davon ob Mensch-, Avatar- oder Grenzkategorie.
+
+
+# BASI vs. RT: je hoeher BASI, desto schneller RT, unabaengig von der Kategorie
+
+```{r}
+dd_BASI <- dd_r %>%
+  select(ARESBASI, AvatarAttrRT:HumanFamRT)
+
+q1_BASI <- quantile(dd_BASI$ARESBASI, probs = 0.25)
+q3_BASI <- quantile(dd_BASI$ARESBASI, probs = 0.75)
+
+BASI_tief <- dd_r %>%
+  select(ARESBASI, AvatarAttrRT:HumanFamRT) %>%
+  filter(ARESBASI < q1_BASI) %>%
+  mutate(BASI_high = FALSE)
+
+BASI_hoch <- dd_r %>%
+  select(ARESBASI, AvatarAttrRT:HumanFamRT) %>%
+  filter(ARESBASI > q3_BASI) %>%
+  mutate(BASI_high = TRUE)
+
+
+
+BASI <- merge(BASI_hoch, BASI_tief, all = TRUE)
+BASI$BASI_value <- ifelse(BASI$BASI_high == TRUE, 'BASI hoch', 'BASI tief')
+
+```
+
+
+```{r}
+summary(BASI_hoch$ARESBASI)
+summary(BASI_tief$ARESBASI)
+sd(BASI_hoch$ARESBASI)
+sd(BASI_tief$ARESBASI)
+```
+
+
+### BASI hoch
+
+```{r}
+
+uBasI_Attr_avatar <-   wilcox.test(BASI_hoch$AvatarAttrRT, BASI_tief$AvatarAttrRT, exact = FALSE, alternative = 'less', )
+uBasI_Fam_avatar <-   wilcox.test(BASI_hoch$AvatarFamRT, BASI_tief$AvatarFamRT, alternative = 'less')
+
+uBasI_Attr_border <-   wilcox.test(BASI_hoch$BorderAttrRT, BASI_tief$BorderAttrRT, exact = FALSE, alternative = 'less')
+uBasI_Fam_border <-   wilcox.test(BASI_hoch$BorderFamRT, BASI_tief$BorderFamRT, exact = FALSE, alternative = 'less')
+
+uBasI_Attr_human <-   wilcox.test(BASI_hoch$HumanAttrRT, BASI_tief$HumanAttrRT, exact = FALSE, alternative = 'less') 
+uBasI_Fam_human <-   wilcox.test(BASI_hoch$HumanFamRT, BASI_tief$HumanFamRT,exact = FALSE,  alternative = 'less')
+```
+
+
+
+
+Resultate
+Int: HO beibehaten
+```{r}
+
+BASI_list <- list(Attr_Avatar = uBasI_Attr_avatar, Fam_Avatar =uBasI_Fam_avatar, Attr_Border = uBasI_Attr_border, Fam_Border = uBasI_Fam_border, Attr_Human = uBasI_Attr_human, Fam_Human = uBasI_Fam_human)
+
+print(BASI_u_results <- sapply(BASI_list, `[`, c("statistic","p.value")))
+```
+
+
+```{r}
+basI_attr_avatar <- ggplot(BASI, aes(x = factor(BASI_value), y = AvatarAttrRT, fill = factor(BASI_value))) +
+  geom_boxplot() +
+  scale_fill_discrete(guide=FALSE) +
+  xlab('BASI') +
+  ylab('Reaktionszeit Kategorie Avatar')+
+  theme_minimal()
+
+basI_attr_border <- ggplot(BASI, aes(x = factor(BASI_value), y = BorderAttrRT, fill = factor(BASI_value))) + 
+  geom_boxplot() +
+  xlab('BASI') +
+  ylab('Reaktionszeit Grenzkategorie')+
+  labs(fill = 'BASI') +
+  theme_minimal()
+
+basI_attr_human <- ggplot(BASI, aes(x = factor(BASI_value), y = HumanAttrRT, fill = factor(BASI_value))) + 
+  geom_boxplot() +
+  xlab('BASI') +
+  ylab('Reaktionszeit Kategorie Mensch')+
+  labs(fill = 'BASI') +
+  theme_minimal()
+
+ggarrange(basI_attr_avatar + rremove("x.text"), basI_attr_border + rremove("x.text"), basI_attr_human + rremove("x.text"), 
+          labels = c('Avatar', 'Mensch', 'Grenze'),
+          ncol = 2, nrow = 2, vjust = 2.5)
+
+#ggsave('/Users/chris/Desktop/Der Ordner/UZH/Psychologie/Aufbaustufe/ExPra/Bericht/Methodenteil & Auswertung/Plots/BASI_RT.png', width = 9, height = 6, unit = 'in', dpi = 600)
+```
+
+
+Korrelationsplot ARES und RT
+```{r}
+corr_data <-data.frame(cor(dd_r[,c('ARESBASI','ARESBASII','AvatarAttrRT', 'BorderAttrRT', 'HumanAttrRT', 'AvatarFamRT',  'BorderFamRT', 'HumanFamRT')], method = "spearman"))
+
+ggcorr(corr_data, nbreaks=8, palette='RdYlBu', label=TRUE, label_size=5, label_color='white', hjust = 0.8)
+```
+
+Korrelation BASI & RT
+```{r}
+corr_BASI <- cor(dd_r[,c('ARESBASI','AvatarAttrRT', 'BorderAttrRT', 'HumanAttrRT', 'AvatarFamRT',  'BorderFamRT', 'HumanFamRT')], method = "spearman")
+
+ggcorr(corr_BASI, nbreaks=8, palette='RdYlBu', label=TRUE, label_size=5, label_color='white', hjust = 0.8)
+```
+
+Korrelation nach Spearman mit ARES BASI und Reaktionszeit in Attr. 
+```{r}
+cor.test(dd_r$ARESBASI, dd_r$AvatarAttrRT, method = 'spearman')
+cor.test(dd_r$ARESBASI, dd_r$BorderAttrRT, method = 'spearman')
+cor.test(dd_r$ARESBASI, dd_r$HumanAttrRT, method = 'spearman')
+```
+Korrelation nach Spearman mit ARES BASI und Reaktionszeit in Fam. 
+```{r}
+cor.test(dd_r$ARESBASI, dd_r$AvatarFamRT, method = 'spearman')
+cor.test(dd_r$ARESBASI, dd_r$BorderFamRT, method = 'spearman')
+cor.test(dd_r$ARESBASI, dd_r$HumanFamRT, method = 'spearman')
+```
+
+
+
+#########BASII und Rating ungerichtet
+```{r}
+unger_Attr_Avatar <- wilcox.test(BASI_hoch$AvatarAttrRT, BASI_tief$AvatarAttrRT, exact = FALSE, )
+unger_Fam_Avatar <- wilcox.test(BASI_hoch$AvatarFamRT, BASI_tief$AvatarFamRT, exact = FALSE)
+  
+unger_Attr_Border <- wilcox.test(BASI_hoch$BorderAttrRT, BASI_tief$BorderAttrRT, exact = FALSE)
+unger_Fam_Border <- wilcox.test(BASI_hoch$BorderFamRT, BASI_tief$BorderFamRT, exact = FALSE)
+  
+unger_Attr_Human <- wilcox.test(BASI_hoch$HumanAttrRT, BASI_tief$HumanAttrRT, exact = FALSE)
+unger_Fam_Human <- wilcox.test(BASI_hoch$HumanFamRT, BASI_tief$HumanFamRT,exact = FALSE)
+
+
+BASI_list_unger <- list(Attr_Avatar = unger_Attr_Avatar, Fam_Avatar =unger_Fam_Avatar, Attr_Border = unger_Attr_Border, Fam_Border = unger_Fam_Border, Attr_Human = unger_Attr_Human, Fam_Human = unger_Fam_Human)
+
+print(BASI_unger_results <- sapply(BASI_list_unger, `[`, c("statistic","p.value")))
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
